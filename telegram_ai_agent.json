@@ -1,0 +1,686 @@
+{
+  "name": "promt_v2",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -832,
+        -1072
+      ],
+      "id": "d2649639-a4b9-49fb-a63f-2a065e9f2ac7",
+      "name": "Telegram Trigger",
+      "webhookId": "80dca760-5315-4a38-be62-e6ea4ab502a8",
+      "credentials": {
+        "telegramApi": {
+          "id": "Wwkt3Bb10lXor1Iw",
+          "name": "promt_n8n"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Ти — досвідчений експерт із промт-інжинірингу, що спеціалізується на створенні високоякісних запитів для великих мовних моделей (LLMs). Твоє завдання — взяти наданий запит і переписати його так, щоб він був максимально чітким, структурованим та ефективним для цільової моделі AI.\n\nКритерії переписаного промту:\n\nЧітка роль: Присвой цільовій моделі AI конкретну, однозначну роль.\n\nДеталізоване завдання: Точно визнач, що має бути виконано.\n\nДостатній контекст: Додай обмеження, бажаний тон, цільову аудиторію, якщо це необхідно.\n\nВизначений формат відповіді: Чітко вкажи, як має виглядати кінцевий результат.\n\nДії:\n\nПроаналізуй мій запит, щоб зрозуміти його основну ідею.\n\nПерепиши його, застосовуючи вищезазначені критерії.\n\nЯкщо запит занадто нечіткий, поверни уточнювальне запитання.\n\nФормат відповіді:\nПоверни лише один блок тексту, який містить готовий, переписаний промт. Жодних додаткових слів. Кількість символів не повинна перевищувати кількисть символів дозволених в telegram\n\nтакож Створити окремий, детальний, високоякісний промт для генерації зображення, яке візуалізує суть запиту користувача. Цей промт має бути написаний англійською мовою.\n\nНадай відповідь виключно у форматі JSON з двома полями:\n\ntext_response: Текстова відповідь, написана українською мовою.\n\nimage_prompt: Детальний промт для генерації зображення, написаний англійською мовою.\n\nНе включай жодних інших слів, пояснень чи коментарів за межами JSON-об'єкта.\n{{ $json.message.text }}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        64,
+        -1312
+      ],
+      "id": "23bc8706-03ff-4f46-ad94-3a6346ababc1",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        80,
+        -1088
+      ],
+      "id": "2d8714a8-7cb8-41f6-8fae-eeacd25589e3",
+      "name": "Google Gemini Chat Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "vPfqmYjtXgnZqLhL",
+          "name": "Test Gemini"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Telegram Trigger').item.json.message.chat.id }}",
+        "text": "=Привіт, {{ $('Telegram Trigger').item.json.message.from.first_name }} {{ $('Telegram Trigger').item.json.message.from.last_name }}! \n\n{{ $json.text_response }}",
+        "additionalFields": {
+          "parse_mode": "HTML"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        928,
+        -1456
+      ],
+      "id": "5c4e4e04-3dc2-4f62-8d53-847a652d1eee",
+      "name": "Send a text message",
+      "webhookId": "8af06806-26a1-4c5d-84e5-94dc7e7f9a5a",
+      "credentials": {
+        "telegramApi": {
+          "id": "Wwkt3Bb10lXor1Iw",
+          "name": "promt_n8n"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Отримання сирого виводу від AI Agent\nconst rawOutput = items[0].json.output;\n\n// Регулярний вираз для вилучення JSON: шукає або блок ```json ... ```, або просто об'єкт {...}\nconst jsonRegex = /```json\\s*([\\s\\S]*?)\\s*```|(\\s*\\{[\\s\\S]*\\}\\s*)/i;\nconst match = rawOutput.match(jsonRegex);\n\nlet jsonString;\n\nif (match) {\n  // Вибираємо вміст з блоку коду (match[1]) або сам об'єкт (match[2])\n  jsonString = (match[1] || match[2] || '').trim();\n} else {\n  // Якщо не знайдено, припускаємо, що весь вивід є JSON\n  jsonString = rawOutput.trim();\n}\n\nlet parsedData;\ntry {\n  // Парсинг вилученого JSON\n  parsedData = JSON.parse(jsonString);\n} catch (e) {\n  // Якщо парсинг не вдався, зупиняємо виконання і повідомляємо про помилку\n  console.error(\"Failed to parse JSON:\", e.message, \"String:\", jsonString);\n  throw new Error(`AI returned malformed JSON. Error: ${e.message}`);\n}\n\n// Повернення розділених даних у вигляді двох окремих елементів:\n// Елемент 1: для текстового ланцюжка (відповідь та TTS)\n// Елемент 2: для ланцюжка зображення\nreturn [\n  { \n    json: {\n      text_response: parsedData.text_response\n    } \n  },\n  { \n    json: {\n      image_prompt: parsedData.image_prompt\n    } \n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        416,
+        -1216
+      ],
+      "id": "b582fd65-dd1f-473c-bfe1-5df44881123a",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        944,
+        -752
+      ],
+      "id": "720c6916-c49b-4ec2-bab5-d18a1cea5722",
+      "name": "Google Gemini Chat Model1",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "vPfqmYjtXgnZqLhL",
+          "name": "Test Gemini"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "==Generate a high-quality, realistic image based on the following description. Return ONLY the URL of the generated image.\\n {{ $json.image_prompt }}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        864,
+        -976
+      ],
+      "id": "5db92504-7a3b-4fb0-a688-2a04f9a37453",
+      "name": "Pictures"
+    },
+    {
+      "parameters": {
+        "operation": "sendPhoto",
+        "chatId": "={{ $('Telegram Trigger').item.json.message.chat.id }}",
+        "file": "={{ $json.output }}",
+        "additionalFields": {
+          "parse_mode": "HTML"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1440,
+        -976
+      ],
+      "id": "b51abe23-aba0-41d1-8a6f-c3b5d468fcc0",
+      "name": "Send a photo message",
+      "webhookId": "8af06806-26a1-4c5d-84e5-94dc7e7f9a5a",
+      "credentials": {
+        "telegramApi": {
+          "id": "Wwkt3Bb10lXor1Iw",
+          "name": "promt_n8n"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.output }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1216,
+        -976
+      ],
+      "id": "e8e1044a-e0db-4e4c-a600-2981f708f327",
+      "name": "Зберігає_картинку",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "sendAudio",
+        "chatId": "={{ $('Telegram Trigger').item.json.message.chat.id }}",
+        "binaryData": "={{ true }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1216,
+        -1264
+      ],
+      "id": "52c450e1-d6f5-41d9-8d63-5c63b13589e9",
+      "name": "Send an audio file",
+      "webhookId": "cfde9820-93f7-4962-82ca-f40a77fecdd9",
+      "credentials": {
+        "telegramApi": {
+          "id": "Wwkt3Bb10lXor1Iw",
+          "name": "promt_n8n"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1XZNi1PxqCZcR40EWKe96t8pHqOFdGyKeS1G9DVaYcNk",
+          "mode": "list",
+          "cachedResultName": "Telegram Bot Users Log",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1XZNi1PxqCZcR40EWKe96t8pHqOFdGyKeS1G9DVaYcNk/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 2140729005,
+          "mode": "list",
+          "cachedResultName": "Логи",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1XZNi1PxqCZcR40EWKe96t8pHqOFdGyKeS1G9DVaYcNk/edit#gid=2140729005"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "id": "={{ $json.message.from.id }}",
+            "first_name": "={{ $json.message.from.first_name }}",
+            "last_name\t": "={{ $json.message.from.last_name }}",
+            "username": "={{ $json.message.from.username }}",
+            "text": "={{ $json.message.text }} {{ $json.text }}"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "first_name",
+              "displayName": "first_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "last_name\t",
+              "displayName": "last_name\t",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "username",
+              "displayName": "username",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "text",
+              "displayName": "text",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        128,
+        -912
+      ],
+      "id": "777da6c9-7549-4b26-84c9-051e342e3cfd",
+      "name": "Append row in sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "k42sFm9rcEXwPdLo",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "audio",
+        "input": "={{ $json.text_response }}",
+        "voice": "onyx",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [
+        928,
+        -1264
+      ],
+      "id": "e7f90346-9f37-4102-abfb-597c76fcbc9d",
+      "name": "Generate audio",
+      "credentials": {
+        "openAiApi": {
+          "id": "X1rBLqIqkk4imct6",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "676976139",
+        "contextWindowLength": 10
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        208,
+        -1088
+      ],
+      "id": "c2456471-5db5-42a9-9b41-6ee7287f81d8",
+      "name": "Simple Memory"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "1793236b-1618-48c9-b997-d9d88f252cc4",
+              "leftValue": "={{ $json.message.text }}",
+              "rightValue": "=",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -608,
+        -1168
+      ],
+      "id": "feccd175-b3ff-419e-a4d7-8f32c82a86c6",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "resource": "file",
+        "fileId": "={{ $json.message.voice.file_id }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        -384,
+        -1072
+      ],
+      "id": "0ff34d08-9584-45cf-ba5d-4e6eb794c4a7",
+      "name": "Get a file",
+      "webhookId": "4e45d210-0fc9-43e3-ad0f-6e4466787ff7",
+      "credentials": {
+        "telegramApi": {
+          "id": "Wwkt3Bb10lXor1Iw",
+          "name": "promt_n8n"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "audio",
+        "operation": "transcribe",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [
+        -160,
+        -1072
+      ],
+      "id": "2fd0a948-1b2f-4d49-81b0-a9ffb282b2ca",
+      "name": "Transcribe a recording",
+      "credentials": {
+        "openAiApi": {
+          "id": "X1rBLqIqkk4imct6",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "b1c97ac8-d5dc-4fed-a3c8-f4c8538c4678",
+              "leftValue": "={{ $json.text_response }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        640,
+        -1360
+      ],
+      "id": "96156a1a-5fdf-4b1d-8d74-97f209679198",
+      "name": "Filter"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "b1c97ac8-d5dc-4fed-a3c8-f4c8538c4678",
+              "leftValue": "={{ $json.image_prompt }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        640,
+        -976
+      ],
+      "id": "9b2e6a0e-9c66-441a-a6a6-24f7598f7bb4",
+      "name": "Filter1"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "Append row in sheet",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Filter",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Filter1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Pictures",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pictures": {
+      "main": [
+        [
+          {
+            "node": "Зберігає_картинку",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Зберігає_картинку": {
+      "main": [
+        [
+          {
+            "node": "Send a photo message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send a photo message": {
+      "main": [
+        []
+      ]
+    },
+    "Generate audio": {
+      "main": [
+        [
+          {
+            "node": "Send an audio file",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Get a file",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get a file": {
+      "main": [
+        [
+          {
+            "node": "Transcribe a recording",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transcribe a recording": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Append row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send a text message": {
+      "main": [
+        []
+      ]
+    },
+    "Filter": {
+      "main": [
+        [
+          {
+            "node": "Send a text message",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Generate audio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter1": {
+      "main": [
+        [
+          {
+            "node": "Pictures",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "d031bce9-5d58-4cf4-8d25-9eb3919d0c0d",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "ebdb7c5d1344d29f8aac01fc50ce3b46f44689d1250c5e12795002936f1398fd"
+  },
+  "id": "f7JwzWwte4nYUMg7",
+  "tags": []
+}
